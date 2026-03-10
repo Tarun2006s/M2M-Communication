@@ -1,0 +1,9 @@
+Flask
+fastapi
+numpy
+torch
+gymnasium
+matplotlib
+pandas
+scikit-learn
+requests

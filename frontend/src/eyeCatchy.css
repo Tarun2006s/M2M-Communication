@@ -1,0 +1,146 @@
+/* eyeCatchy.css - imported manually from your main stylesheet or index.js */
+
+/* gradient page background */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #ece9e6 0%, #ffffff 100%);
+  color: #333;
+}
+
+/* headers */
+h1, h2, h3 {
+  color: #222;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  font-weight: 600;
+}
+
+/* controls panel container */
+.controls-panel {
+  max-width: 600px;
+  margin: 1.5rem auto;
+  padding: 1.25rem 2rem;
+  background: #fafafa;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  transition: transform 0.2s;
+}
+.controls-panel:hover {
+  transform: translateY(-3px);
+}
+
+.controls-panel h2 {
+  margin-bottom: 1rem;
+}
+
+.controls-panel label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.controls-panel input[type=number],
+.controls-panel select {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  margin-bottom: 0.8rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+.controls-panel input[type=number]:focus,
+.controls-panel select:focus {
+  outline: none;
+  border-color: #82c0cc;
+  box-shadow: 0 0 3px rgba(130,192,204,0.5);
+}
+
+.controls-panel button {
+  display: inline-block;
+  padding: 0.7rem 1.5rem;
+  background: #82c0cc;
+  color: white;
+  font-size: 1rem;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.controls-panel button:hover {
+  background: #69aab5;
+  transform: translateY(-1px);
+}
+
+/* dashboard and result sections */
+.main-content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+}
+
+.dashboard-summary {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.dashboard-summary > div {
+  background: #fff;
+  padding: 1rem 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 3px 7px rgba(0,0,0,0.06);
+  flex: 1 1 200px;
+  text-align: center;
+}
+.dashboard-summary strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #555;
+}
+.dashboard-summary span {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* chart container */
+.chart-container {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 3px 7px rgba(0,0,0,0.06);
+}
+
+/* paragraphs and other text */
+p, li {
+  line-height: 1.6;
+}
+
+/* links for navigation (if using) */
+a {
+  color: #82c0cc;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* subtle animation for charts */
+canvas {
+  animation: fadeIn 0.6s ease-in-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* responsive tweaks */
+@media (max-width: 600px) {
+  .controls-panel {
+    padding: 1rem;
+  }
+}
