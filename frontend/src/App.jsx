@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-route
 import SimulationDashboard from './components/SimulationDashboard';
 import ComparisonCharts from './components/ComparisonCharts';
 import ControlsPanel from './components/ControlsPanel';
+import { fetchSimulationResults } from './api/simulation';
 
 const AppContent = () => {
 
@@ -28,16 +29,7 @@ const AppContent = () => {
 
     const startSimulation = async () => {
         try {
-
-            const response = await fetch("http://127.0.0.1:8000/run_simulation", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(parameters)
-            });
-
-            const data = await response.json();
+            const data = await fetchSimulationResults(parameters);
 
             console.log("Simulation Result:", data);
 
