@@ -78,9 +78,7 @@ class WSNEnv(gym.Env):
         self.dist_norm = dists / np.sqrt(arena_size[0]**2 + arena_size[1]**2)
 
         # battery models
-        self.batteries = [BatteryModel(E_max=100.0, soh_init=1.0,
-                                       k_cycle=5e-5, alpha=1.2, calendar_decay=5e-7)
-                          for _ in range(N)]
+        self.batteries = self._create_batteries()
 
         # for each node track last action and recent activity (sliding window)
         self.last_action = np.zeros(N, dtype=int)
@@ -92,14 +90,17 @@ class WSNEnv(gym.Env):
         # action space - discrete options per node, we flatten into MultiDiscrete
         self.action_space = spaces.MultiDiscrete([2] * N)  # each node: 0 or 1
 
+    def _create_batteries(self):
+        return [BatteryModel(E_max=100.0, soh_init=1.0,
+                             k_cycle=5e-5, alpha=1.2, calendar_decay=5e-7)
+                for _ in range(self.N)]
+
     def reset(self):
         self.step_count = 0
         self.positions = self.rng.rand(self.N, 2) * np.array(self.arena_size)
         dists = np.linalg.norm(self.positions - self.sink, axis=1)
         self.dist_norm = dists / np.sqrt(self.arena_size[0]**2 + self.arena_size[1]**2)
-        self.batteries = [BatteryModel(E_max=100.0, soh_init=1.0,
-                                       k_cycle=5e-5, alpha=1.2, calendar_decay=5e-7)
-                          for _ in range(self.N)]
+        self.batteries = self._create_batteries()
         self.last_action = np.zeros(self.N, dtype=int)
         self.recent_activity = np.zeros(self.N, dtype=float)
         return self._get_obs()
