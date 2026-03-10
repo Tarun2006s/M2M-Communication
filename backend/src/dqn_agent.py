@@ -102,12 +102,13 @@ class DDQNAgent:
         if len(self.replay) < self.min_replay_size:
             return None
         transitions = self.replay.sample(self.batch_size)
-        state = torch.FloatTensor(np.stack(transitions.state)).to(self.device)  # (B, state_dim)
-        next_state = torch.FloatTensor(np.stack(transitions.next_state)).to(self.device)
-        reward = torch.FloatTensor(np.array(transitions.reward)).unsqueeze(1).to(self.device)  # (B,1)
-        done = torch.FloatTensor(np.array(transitions.done).astype(np.float32)).unsqueeze(1).to(self.device)
+        # Use np.array then torch.from_numpy for zero-copy tensor creation where possible.
+        state = torch.from_numpy(np.stack(transitions.state)).to(self.device)        # (B, state_dim)
+        next_state = torch.from_numpy(np.stack(transitions.next_state)).to(self.device)
+        reward = torch.from_numpy(np.array(transitions.reward, dtype=np.float32)).unsqueeze(1).to(self.device)  # (B,1)
+        done = torch.from_numpy(np.array(transitions.done, dtype=np.float32)).unsqueeze(1).to(self.device)
         # actions are arrays; convert to tensor (B, node_count)
-        actions = torch.LongTensor(np.stack(transitions.action)).to(self.device)  # (B, node_count)
+        actions = torch.from_numpy(np.stack(transitions.action).astype(np.int64)).to(self.device)  # (B, node_count)
 
         # compute q-values for current states
         q_values = self.q_net(state)  # (B, node_count * action_dim)
