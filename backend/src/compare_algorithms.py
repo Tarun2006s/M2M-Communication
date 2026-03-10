@@ -54,7 +54,7 @@ class HeuristicAlgorithm:
 
     def select_action(self, state):
         # Implement a simple heuristic for action selection
-        return np.array([1 if battery.soc > 0.5 else 0 for battery in self.env.batteries])
+        return (self.env.soc > 0.5).astype(int)
 
 if __name__ == "__main__":
     comparison_results = run_comparison()

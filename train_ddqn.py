@@ -20,7 +20,6 @@ def run_training(seed=0, N=10, episodes=5000, max_steps=500, eval_every=100, sav
     os.makedirs(save_dir, exist_ok=True)
     rewards_history = []
     losses = []
-    mse_per_round = []   # 🔥 For accumulated MSE
     best_eval = -1e9
 
     start_time = time.time()
@@ -39,7 +38,6 @@ def run_training(seed=0, N=10, episodes=5000, max_steps=500, eval_every=100, sav
 
             if loss is not None:
                 losses.append(loss)
-                mse_per_round.append(loss)   # 🔥 Track MSE
 
             state = next_state
             ep_reward += reward
@@ -65,7 +63,7 @@ def run_training(seed=0, N=10, episodes=5000, max_steps=500, eval_every=100, sav
     results = evaluate_policy(agent, env, episodes=1)
 
     # 🔥 Plot required research graphs
-    plot_required_graphs(results, mse_per_round, method_name="DDQN")
+    plot_required_graphs(results, losses, method_name="DDQN")
 
     # ---- Plot reward curve ----
     plt.figure()

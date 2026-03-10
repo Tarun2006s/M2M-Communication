@@ -61,13 +61,9 @@ async def run_simulation(request: SimulationRequest):
             action = agent.select_action(state)
             next_state, reward, done, info = env.step(action)
 
-            # record battery stats for the current step
-            socs = [b.soc for b in env.batteries]
-            soh_vals = [b.soh for b in env.batteries]
-            avg_soc = np.mean(socs) / env.batteries[0].E_max
-            avg_soh = np.mean(soh_vals)
-            ep_soc.append(avg_soc)
-            ep_soh.append(avg_soh)
+            # record battery stats for the current step using vectorised arrays
+            ep_soc.append(float(env.soc.mean() / env.E_max))
+            ep_soh.append(float(env.soh.mean()))
 
             agent.store(state, action, reward, next_state, done)
             agent.train_step()
@@ -92,7 +88,9 @@ async def run_simulation(request: SimulationRequest):
     return SimulationResult(
         rewards=rewards_history,
         average_lifetime=average_lifetime,
-        total_energy=total_energy
+        total_energy=total_energy,
+        battery_history=battery_history,
+        soh_history=soh_history,
     )
 
 @app.get("/")

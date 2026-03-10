@@ -56,11 +56,24 @@ class WSNEnv(gym.Env):
       - last_action (0 or 1)
       - distance_to_sink_normalized (0..1)
       - recent_activity_ratio (0..1)
+
+    Battery state is stored as flat numpy arrays (``self.soc``, ``self.soh``)
+    instead of per-node Python objects, enabling fully vectorised step and
+    observation computation.  This gives a large speed-up for large N.
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, N=10, arena_size=(500,500), sink=(250,250), timestep_energy_awake=1.0,
-                 energy_sleep=0.01, max_steps=10000, seed=None):
+    # Battery parameters (same as the old BatteryModel defaults used in _create_batteries)
+    E_max: float = 100.0
+    _k_cycle: float = 5e-5
+    _alpha: float = 1.2
+    _calendar_decay: float = 5e-7
+    _soc_dead: float = 0.01
+    _soh_dead: float = 0.05
+
+    def __init__(self, N=10, arena_size=(500, 500), sink=(250, 250),
+                 timestep_energy_awake=1.0, energy_sleep=0.01,
+                 max_steps=10000, seed=None):
         super().__init__()
         self.N = N
         self.arena_size = arena_size
@@ -71,77 +84,84 @@ class WSNEnv(gym.Env):
         self.step_count = 0
         self.rng = np.random.RandomState(seed)
 
-        # initialize node positions
+        # initialize node positions and distances to sink
         self.positions = self.rng.rand(N, 2) * np.array(arena_size)
-        # distances to sink normalized
         dists = np.linalg.norm(self.positions - self.sink, axis=1)
-        self.dist_norm = dists / np.sqrt(arena_size[0]**2 + arena_size[1]**2)
+        self.dist_norm = dists / np.sqrt(arena_size[0] ** 2 + arena_size[1] ** 2)
 
-        # battery models
-        self.batteries = self._create_batteries()
+        # Vectorised battery state (replaces list of BatteryModel objects)
+        self.soc = np.full(N, self.E_max, dtype=np.float64)   # state of charge per node
+        self.soh = np.ones(N, dtype=np.float64)                # state of health per node
 
-        # for each node track last action and recent activity (sliding window)
-        self.last_action = np.zeros(N, dtype=int)
-        self.recent_activity = np.zeros(N, dtype=float)  # exponential moving avg
+        # per-node tracking
+        self.last_action = np.zeros(N, dtype=np.int32)
+        self.recent_activity = np.zeros(N, dtype=np.float64)   # exponential moving avg
 
         # observation and action spaces
         obs_dim_per_node = 5
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(N * obs_dim_per_node,), dtype=np.float32)
-        # action space - discrete options per node, we flatten into MultiDiscrete
+        self.observation_space = spaces.Box(
+            low=0.0, high=1.0, shape=(N * obs_dim_per_node,), dtype=np.float32
+        )
         self.action_space = spaces.MultiDiscrete([2] * N)  # each node: 0 or 1
-
-    def _create_batteries(self):
-        return [BatteryModel(E_max=100.0, soh_init=1.0,
-                             k_cycle=5e-5, alpha=1.2, calendar_decay=5e-7)
-                for _ in range(self.N)]
 
     def reset(self):
         self.step_count = 0
         self.positions = self.rng.rand(self.N, 2) * np.array(self.arena_size)
         dists = np.linalg.norm(self.positions - self.sink, axis=1)
-        self.dist_norm = dists / np.sqrt(self.arena_size[0]**2 + self.arena_size[1]**2)
-        self.batteries = self._create_batteries()
-        self.last_action = np.zeros(self.N, dtype=int)
-        self.recent_activity = np.zeros(self.N, dtype=float)
+        self.dist_norm = dists / np.sqrt(self.arena_size[0] ** 2 + self.arena_size[1] ** 2)
+        self.soc = np.full(self.N, self.E_max, dtype=np.float64)
+        self.soh = np.ones(self.N, dtype=np.float64)
+        self.last_action = np.zeros(self.N, dtype=np.int32)
+        self.recent_activity = np.zeros(self.N, dtype=np.float64)
         return self._get_obs()
 
     def _get_obs(self):
-        obs = []
-        for i in range(self.N):
-            soc = self.batteries[i].soc / self.batteries[i].E_max
-            soh = self.batteries[i].soh
-            la = float(self.last_action[i])
-            d = self.dist_norm[i]
-            ra = self.recent_activity[i]
-            obs.extend([soc, soh, la, d, ra])
-        return np.array(obs, dtype=np.float32)
+        # Stack per-node feature columns and flatten — fully vectorised, no Python loop.
+        obs = np.column_stack([
+            self.soc / self.E_max,
+            self.soh,
+            self.last_action.astype(np.float32),
+            self.dist_norm,
+            self.recent_activity,
+        ]).astype(np.float32)
+        return obs.ravel()
 
     def step(self, action):
         """
         action: array-like of length N with values 0/1
         returns: obs, reward, done, info
         """
-        assert len(action) == self.N
+        action = np.asarray(action)
+        assert action.shape == (self.N,)
         self.step_count += 1
 
-        # simulate energy draw & battery update
-        total_energy_used = 0.0
-        coverage_active = 0
-        for i, a in enumerate(action):
-            if a == 1:  # awake
-                energy_draw = self.timestep_energy_awake * (1 + 0.1 * self.dist_norm[i])  # distance penalty
-                self.batteries[i].discharge(energy_draw)
-                self.recent_activity[i] = 0.9 * self.recent_activity[i] + 0.1 * 1.0
-                coverage_active += 1
-                total_energy_used += energy_draw
-            else:  # sleep
-                self.batteries[i].discharge(self.energy_sleep)  # tiny leakage
-                self.recent_activity[i] = 0.9 * self.recent_activity[i] + 0.1 * 0.0
-                total_energy_used += self.energy_sleep
+        awake_mask = action == 1
 
-            self.last_action[i] = int(a)
+        # Vectorised energy draw: awake nodes pay distance-scaled cost, sleeping nodes pay leakage.
+        energy_draw = np.where(
+            awake_mask,
+            self.timestep_energy_awake * (1.0 + 0.1 * self.dist_norm),
+            self.energy_sleep,
+        )
 
-        # compute SoH changes included in battery model (already updated by discharge).
+        # Update SoC and compute per-node depth-of-discharge for SoH degradation.
+        prev_soc = self.soc.copy()
+        self.soc = np.maximum(0.0, self.soc - energy_draw)
+        dod = (prev_soc - self.soc) / self.E_max  # always >= 0
+
+        # Update SoH: cycle degradation + calendar fade (vectorised).
+        # Use boolean indexing to avoid creating a zero-filled intermediate array.
+        cycle_mask = dod > 0
+        self.soh[cycle_mask] -= self._k_cycle * (dod[cycle_mask] ** self._alpha)
+        self.soh -= self._calendar_decay
+        np.clip(self.soh, 0.0, 1.0, out=self.soh)
+
+        # Update recent activity (exponential moving average) and last action.
+        self.recent_activity = 0.9 * self.recent_activity + 0.1 * awake_mask.astype(np.float64)
+        self.last_action = action.astype(np.int32)
+
+        total_energy_used = float(energy_draw.sum())
+        coverage_active = int(awake_mask.sum())
 
         # reward components
         # 1) coverage reward (normalize by N)
@@ -150,25 +170,24 @@ class WSNEnv(gym.Env):
 
         # 2) energy penalty (we want low energy usage)
         # scale so typical energy draws (N＊timestep) map to order 0..1
-        r_energy = - (total_energy_used / (self.N * self.timestep_energy_awake * 2.0))
+        r_energy = -(total_energy_used / (self.N * self.timestep_energy_awake * 2.0))
 
         # 3) SoH penalty - we penalize rapid SoH loss: compute average SoH drop this step
-        avg_soh = np.mean([b.soh for b in self.batteries])
+        avg_soh = float(self.soh.mean())
         # For reward we want higher SoH -> positive; but we penalize SoH decline
         # keep a running baseline of initial SoH (1.0)
         r_soh = avg_soh - 0.99  # small positive if SoH near 1.0, negative if dips below 0.99
 
         # 4) fairness / balance reward - penalize nodes with very low SoC vs average
-        socs = np.array([b.soc for b in self.batteries])
-        soc_std = np.std(socs) / (self.batteries[0].E_max + 1e-9)
-        r_balance = - soc_std
+        soc_std = float(self.soc.std()) / (self.E_max + 1e-9)
+        r_balance = -soc_std
 
         # combined reward
         # weights must be tuned; start with these values and justify in paper
         reward = 3.0 * r_coverage + 1.0 * r_energy + 25.0 * r_soh + 1.0 * r_balance
 
         # detect terminal: if too many nodes are dead -> episode ends
-        dead_nodes = sum([1 for b in self.batteries if b.is_dead()])
+        dead_nodes = int(((self.soc <= self._soc_dead) | (self.soh <= self._soh_dead)).sum())
         done = False
         if dead_nodes > 0.3 * self.N:  # alarm: >30% nodes dead
             done = True
@@ -180,13 +199,13 @@ class WSNEnv(gym.Env):
             'total_energy': total_energy_used,
             'coverage_ratio': coverage_ratio,
             'avg_soh': avg_soh,
-            'dead_nodes': dead_nodes
+            'dead_nodes': dead_nodes,
         }
 
         return self._get_obs(), float(reward), done, info
 
     def render(self, mode='human'):
         # simple text render
-        socs = [round(b.soc,1) for b in self.batteries]
-        sohs = [round(b.soh,3) for b in self.batteries]
+        socs = np.round(self.soc, 1).tolist()
+        sohs = np.round(self.soh, 3).tolist()
         print(f"Step {self.step_count}: socs={socs}, sohs={sohs}")
