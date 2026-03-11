@@ -1,3 +1,15 @@
 __pycache__/
 *.py[cod]
 *.pyo
+
+# SQLite runtime databases
+*.db
+
+# Environment / secrets
+.env
+*.env
+
+# Build artifacts
+dist/
+build/
+node_modules/
