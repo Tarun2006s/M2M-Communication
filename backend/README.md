@@ -1,63 +1,134 @@
-# dqn-battery-scheduling-app/backend/README.md
+# M2M Communication — Backend
 
-# DQN Battery Scheduling Application - Backend
+FastAPI backend for the DQN Battery Scheduling / M2M Communication project. Provides the simulation API, observability endpoints, real-time WebSocket dashboard, schema-validated telemetry ingest, and per-device API key management.
 
-This project implements a Deep Q-Network (DQN) combined with battery health management and sleep/awake scheduling for Wireless Sensor Networks (WSN). The backend is responsible for running simulations, managing the DQN agent, and providing an API for the frontend application.
+## Quick Start
 
-## Table of Contents
+### 1. Install dependencies
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [API Endpoints](#api-endpoints)
-- [File Structure](#file-structure)
-- [License](#license)
+```bash
+cd backend
+pip install -r requirements.txt
+```
 
-## Installation
+### 2. Set the admin API key
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/dqn-battery-scheduling-app.git
-   cd dqn-battery-scheduling-app/backend
-   ```
+The admin key protects device-management endpoints (`/admin/devices`). Pick any secret string:
 
-2. Create a virtual environment (optional but recommended):
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-   ```
+```bash
+# Linux / macOS
+export ADMIN_API_KEY=your-secret-admin-key
 
-3. Install the required packages:
-   ```
-   pip install -r requirements.txt
-   ```
+# Windows (PowerShell)
+$env:ADMIN_API_KEY = "your-secret-admin-key"
+```
 
-## Usage
+### 3. Start the server
 
-1. Start the API server:
-   ```
-   python src/api.py
-   ```
+```bash
+# From the backend/ directory:
+uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+```
 
-2. The server will run on `http://localhost:8000` (or another port if specified).
+Or using Python directly:
 
-3. Use the frontend application to interact with the backend and run simulations.
+```bash
+python -m uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The API is now available at **http://localhost:8000**.
+
+### 4. Open the UI pages
+
+| Page | URL |
+|------|-----|
+| API docs (Swagger) | http://localhost:8000/docs |
+| Live device dashboard | http://localhost:8000/dashboard |
+| Server stats | http://localhost:8000/stats |
+| Health check | http://localhost:8000/health |
+
+---
 
 ## API Endpoints
 
-- `POST /simulate`: Runs a simulation with the specified parameters.
-- `GET /results`: Retrieves the results of the last simulation.
-- `GET /compare`: Compares the DQN algorithm against other algorithms and returns the metrics.
+### Observability
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Server health + uptime |
+| GET | `/api/stats` | JSON stats snapshot |
+| GET | `/stats` | Stats HTML page |
 
-## File Structure
+### Telemetry
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/telemetry` | X-Device-ID + X-API-Key | Ingest a validated message |
 
-- `src/`
-  - `dqn_agent.py`: Implementation of the DQN agent.
-  - `env_wsn.py`: Definition of the WSN environment and battery model.
-  - `compare_algorithms.py`: Logic to compare DQN with other algorithms.
-  - `api.py`: API server setup.
-  - `utils.py`: Utility functions for data processing and logging.
-- `requirements.txt`: Python dependencies for the backend.
+### Dashboard
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/dashboard` | Live device dashboard UI |
+| WS | `/ws/dashboard` | WebSocket feed |
+
+### Admin (requires `X-API-Key: $ADMIN_API_KEY`)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/admin/devices` | Create device + get API key |
+| GET | `/admin/devices` | List devices |
+| POST | `/admin/devices/{id}/revoke` | Revoke a device key |
+
+### Simulation
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/run_simulation` | Run DQN battery simulation |
+
+---
+
+## Example: Create a device and send telemetry
+
+```bash
+# 1. Create a device (admin only)
+curl -X POST http://localhost:8000/admin/devices \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
+  -d '{"device_id": "sensor-01", "role": "device"}'
+# → returns {"api_key": "m2m_...", ...}
+
+# 2. Send telemetry with the returned key
+curl -X POST http://localhost:8000/telemetry \
+  -H "Content-Type: application/json" \
+  -H "X-Device-ID: sensor-01" \
+  -H "X-API-Key: m2m_..." \
+  -d '{
+    "schema_version": "1.0",
+    "device_id": "sensor-01",
+    "timestamp": "2024-01-15T12:00:00Z",
+    "type": "telemetry",
+    "payload": {"temperature": 22.5}
+  }'
+```
+
+---
+
+## Running Tests
+
+```bash
+cd backend
+pytest tests/ -v
+```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ADMIN_API_KEY` | *(unset — admin disabled)* | Secret key for admin endpoints |
+| `LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`, `INFO`, `WARNING`) |
+| `DEVICE_DB_PATH` | `src/devices.db` | Path to SQLite device database |
+| `APP_VERSION` | `1.0.0` | Version string returned by `/health` |
+
+---
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+MIT License. See the LICENSE file for details.
