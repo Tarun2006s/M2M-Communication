@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>M2M Device Dashboard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+    header { background: #1e293b; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; border-bottom: 1px solid #334155; }
+    header h1 { margin: 0; font-size: 1.4rem; color: #38bdf8; }
+    #status-badge { font-size: 0.8rem; padding: 2px 10px; border-radius: 999px; }
+    .connected    { background: #166534; color: #bbf7d0; }
+    .disconnected { background: #7f1d1d; color: #fecaca; }
+    main { padding: 1.5rem 2rem; }
+    table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }
+    thead th { background: #0f172a; text-align: left; padding: 0.75rem 1rem; font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; letter-spacing: .05em; }
+    tbody td { padding: 0.7rem 1rem; border-top: 1px solid #334155; font-size: 0.9rem; }
+    .badge-online  { color: #4ade80; font-weight: 600; }
+    .badge-offline { color: #f87171; }
+    .no-data { text-align: center; padding: 3rem; color: #64748b; }
+    #last-updated { margin-top: .5rem; font-size: 0.75rem; color: #64748b; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📡 M2M Device Dashboard</h1>
+    <span id="status-badge" class="disconnected">● Connecting…</span>
+  </header>
+  <main>
+    <table id="device-table">
+      <thead>
+        <tr>
+          <th>Device ID</th>
+          <th>Status</th>
+          <th>Role</th>
+          <th>Last Seen</th>
+          <th>Last Message Type</th>
+          <th>Messages</th>
+        </tr>
+      </thead>
+      <tbody id="device-tbody">
+        <tr><td colspan="6" class="no-data">Waiting for data…</td></tr>
+      </tbody>
+    </table>
+    <div id="last-updated"></div>
+  </main>
+
+  <script>
+    const OFFLINE_THRESHOLD_MS = 30_000; // 30 seconds without update → offline
+    const devices = {};
+
+    function formatRelative(isoString) {
+      if (!isoString) return '—';
+      const diff = Date.now() - new Date(isoString).getTime();
+      if (diff < 1000) return 'just now';
+      if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
+      if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+      return new Date(isoString).toLocaleTimeString();
+    }
+
+    function isOnline(lastSeen) {
+      if (!lastSeen) return false;
+      return (Date.now() - new Date(lastSeen).getTime()) < OFFLINE_THRESHOLD_MS;
+    }
+
+    function render() {
+      const tbody = document.getElementById('device-tbody');
+      const keys = Object.keys(devices);
+      if (keys.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">No devices seen yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = keys.sort().map(id => {
+        const d = devices[id];
+        const online = isOnline(d.last_seen);
+        return `<tr>
+          <td><strong>${id}</strong></td>
+          <td class="${online ? 'badge-online' : 'badge-offline'}">${online ? '● Online' : '○ Offline'}</td>
+          <td>${d.role || '—'}</td>
+          <td>${formatRelative(d.last_seen)}</td>
+          <td>${d.last_message_type || '—'}</td>
+          <td>${d.message_count || 0}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('last-updated').textContent =
+        'Last updated: ' + new Date().toLocaleTimeString();
+    }
+
+    function applyUpdate(msg) {
+      if (msg.type === 'device_update' || msg.type === 'telemetry_update') {
+        const d = msg.device || {};
+        const id = d.device_id;
+        if (id) {
+          devices[id] = { ...devices[id], ...d };
+          render();
+        }
+      } else if (msg.type === 'full_state') {
+        (msg.devices || []).forEach(d => { devices[d.device_id] = d; });
+        render();
+      }
+    }
+
+    // Refresh relative-time labels every 10 s even without a new WS event
+    setInterval(render, 10_000);
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/ws/dashboard`);
+      const badge = document.getElementById('status-badge');
+
+      ws.onopen = () => {
+        badge.textContent = '● Connected';
+        badge.className = 'connected';
+      };
+
+      ws.onmessage = evt => {
+        try { applyUpdate(JSON.parse(evt.data)); }
+        catch (e) { console.warn('Bad WS message', e); }
+      };
+
+      ws.onclose = () => {
+        badge.textContent = '● Disconnected — reconnecting…';
+        badge.className = 'disconnected';
+        setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    connect();
+  </script>
+</body>
+</html>

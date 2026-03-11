@@ -1,9 +1,17 @@
 Flask
 fastapi
+uvicorn[standard]
 numpy
 torch
 gymnasium
+gym
 matplotlib
 pandas
 scikit-learn
 requests
+jsonschema>=4.0.0
+passlib[bcrypt]
+python-multipart
+websockets
+pytest
+httpx

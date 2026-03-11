@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://m2m-communication/schemas/v1.json",
+  "title": "M2M Message Envelope v1",
+  "description": "Canonical message envelope for M2M device communication",
+  "type": "object",
+  "required": ["schema_version", "device_id", "timestamp", "type", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version identifier"
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9_\\-\\.]+$",
+      "description": "Unique device identifier"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 / ISO-8601 timestamp when the message was created on the device"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["telemetry", "command", "status"],
+      "description": "Message type"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Type-specific message payload"
+    }
+  }
+}
